@@ -1,9 +1,14 @@
 import logging
+import sqlite3
+
+import pandas as pd
+
+from .database import get_connection, initialize_database
 
 logger = logging.getLogger(__name__)
 
 
-class DatasetStorage:
+class MovieStorage:
     def __init__(self):
         self._store = {}
         self._counter = 0
