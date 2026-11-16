@@ -32,6 +32,6 @@ def initialize_database(db_path):
         connection.execute(sql_statement)
         connection.commit()
     finally:
-        connection.close
+        connection.close()
 
         
