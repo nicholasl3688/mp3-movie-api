@@ -11,6 +11,7 @@ from src import (
     MovieUploadInfo,
     MovieDataResponse,
     MovieProcessingReport,
+    MovieCache
 )
 from src.storage import MOVIE_COLUMNS
 
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Data Processing API", version="1.0.0")
 storage = MovieStorage()
+cache = MovieCache()
 app.middleware("http")(log_requests)
 
 
@@ -68,26 +70,31 @@ async def upload_movies(file: UploadFile = File(...)):
     # Return filename, rows, columns, and column_names for this upload.
     pass
     storage.save(df)
+    cache.invalidate()
     logger.info(f"Uploaded movies: filename={file.filename}, rows={len(df)}")
     return {"filename": file.filename, "rows": len(df), "columns": df.shape[1],
     "column_names": list(df.columns)}
 
 
-
 @app.get("/movies", response_model=MovieDataResponse)
 def get_movies(limit: int = Query(default=100, ge=1)):
-    # TODO: Use MovieStorage methods to retrieve up to limit rows and count the total number of stored movies.
-    # Return {"data": ..., "total_rows": ...}.
-    # If empty, return {"data": [], "total_rows": 0}.
-    # Log the row count at INFO.
+    # TODO 1: Look up the response using cache.get(limit).
+    # If it is not None, log the cache hit at INFO and return it.
+    value = cache.get(limit)
+    if value is not None:
+        logger.info(f"Retrieved movies from cache: limit={limit}, returned_rows={len(value['data'])}")
+        return value 
+    # Keep Part 1's SQL retrieval, total count, and response construction here.
     data = storage.select_columns(MOVIE_COLUMNS, limit)
     total_rows = storage.count_movies()
+    
+    # TODO 2: Before the existing return, cache the complete response
+    # using cache.set(limit, response).
+    # Keep the existing row-count log and return.
+    response = {"data": data, "total_rows": total_rows}
+    cache.set(limit, response)
     logger.info(f"Retrieved movies: returned_rows={len(data)}")
-    return {"data": data, "total_rows": total_rows}
-
-#  class MovieDataResponse(BaseModel):
-#     data: list[dict]
-#     total_rows: int
+    return response
 
 
 @app.get("/movies/search", response_model=list[dict])
@@ -140,6 +147,7 @@ def process_movies(config: ProcessConfig):
     # TODO 3: Save the processed DataFrame using storage.save().
     # Return validation_rows_removed and cleaning_report without a dataset ID.
     storage.save(processed_df)
+    cache.invalidate()
     logger.info(f"Processed movies: validation_removed={rows_removed}, rows_before={len(validated_copy)}, rows_after={len(processed_df)}")
     return {"validation_rows_removed": rows_removed, "cleaning_report": report}
 
